@@ -1,43 +1,17 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import ArticleCard from '../../../components/ArticleCard';
-import {
-  getArticleBySlug,
-  getPublishedArticles,
-  getRelatedArticles,
-  siteConfig
-} from '../../../lib/mock-data';
 
-export const revalidate = 3600;
+import ArticleCard from '../../../components/ArticleCard';
+import ArticleViewTracker from '../../../components/ArticleViewTracker';
+import { getArticlePageData } from '../../../lib/api';
+import { getPublishedArticles } from '../../../lib/mock-data';
+import { siteConfig, toAbsoluteImageUrl, toAbsoluteUrl } from '../../../lib/site-config';
+
+export const revalidate = 60;
 
 export function generateStaticParams() {
   return getPublishedArticles().map((article) => ({ slug: article.slug }));
-}
-
-export function generateMetadata({ params }) {
-  const article = getArticleBySlug(params.slug);
-
-  if (!article) {
-    return {
-      title: 'Статтю не знайдено'
-    };
-  }
-
-  return {
-    title: article.metaTitle,
-    description: article.metaDescription,
-    alternates: {
-      canonical: `/articles/${article.slug}`
-    },
-    openGraph: {
-      title: article.metaTitle,
-      description: article.metaDescription,
-      url: `${siteConfig.baseUrl}/articles/${article.slug}`,
-      type: 'article',
-      publishedTime: article.publishedAt
-    }
-  };
 }
 
 function formatDate(value) {
@@ -48,69 +22,145 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
-export default function ArticlePage({ params }) {
-  const article = getArticleBySlug(params.slug);
+export async function generateMetadata(props) {
+  const params = await props.params;
+  const { article } = await getArticlePageData(params.slug);
+
+  if (!article) {
+    return {
+      title: 'Статтю не знайдено'
+    };
+  }
+
+  return {
+    title: article.metaTitle || article.title,
+    description: article.metaDescription || article.excerpt,
+    alternates: {
+      canonical: `/articles/${article.slug}`
+    },
+    openGraph: {
+      title: article.metaTitle || article.title,
+      description: article.metaDescription || article.excerpt,
+      url: `${siteConfig.baseUrl}/articles/${article.slug}`,
+      type: 'article',
+      publishedTime: article.publishedAt,
+      images: [
+        {
+          url: toAbsoluteImageUrl(article.coverUrl),
+          alt: article.title
+        }
+      ]
+    }
+  };
+}
+
+export default async function ArticlePage(props) {
+  const params = await props.params;
+  const { article, relatedArticles } = await getArticlePageData(params.slug);
 
   if (!article) {
     notFound();
   }
 
-  const relatedArticles = getRelatedArticles(article.slug, 3);
+  const articleJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: article.title,
+    description: article.metaDescription || article.excerpt,
+    datePublished: article.publishedAt,
+    dateModified: article.updatedAt || article.publishedAt,
+    image: [toAbsoluteImageUrl(article.coverUrl)],
+    author: article.author
+      ? {
+          '@type': 'Person',
+          name: article.author.name,
+          url: toAbsoluteUrl(`/authors/${article.author.slug}`)
+        }
+      : undefined,
+    publisher: {
+      '@type': 'Organization',
+      name: siteConfig.name,
+      url: siteConfig.baseUrl
+    },
+    mainEntityOfPage: toAbsoluteUrl(`/articles/${article.slug}`)
+  };
 
   return (
     <main className="container page narrow">
+      <ArticleViewTracker articleId={article.id} />
       <article className="article-layout">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+        />
+
         <Image
-          src={article.coverUrl}
+          src={article.coverUrl || '/placeholder-cover.svg'}
           alt={article.title}
           width={1200}
           height={675}
           className="article-cover"
+          priority
         />
 
         <header className="article-header">
           <div className="article-meta">
-            <Link href={`/categories/${article.category.slug}`} className="badge">
-              {article.category.name}
-            </Link>
+            {article.category ? (
+              <Link href={`/categories/${article.category.slug}`} className="badge">
+                {article.category.name}
+              </Link>
+            ) : null}
             <span className="muted">{formatDate(article.publishedAt)}</span>
           </div>
 
           <h1>{article.title}</h1>
-          <p className="muted">{article.excerpt}</p>
+          {article.excerpt ? <p className="muted">{article.excerpt}</p> : null}
 
           <div className="inline-list">
-            <Link href={`/authors/${article.author.slug}`} className="pill">
-              Автор: {article.author.name}
-            </Link>
+            {article.author ? (
+              <Link href={`/authors/${article.author.slug}`} className="pill">
+                Автор: {article.author.name}
+              </Link>
+            ) : null}
             <span className="pill">Переглядів: {article.views}</span>
           </div>
         </header>
 
         <section className="article-content prose">
-          {article.content.split('\n\n').map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
+          {String(article.content || '')
+            .split('\n\n')
+            .filter(Boolean)
+            .map((paragraph) => (
+              <p key={paragraph}>{paragraph}</p>
+            ))}
         </section>
 
         <section className="related-block">
           <h2 className="section-title">Теги</h2>
           <div className="tag-list">
-            {article.tags.map((tag) => (
-              <Link key={tag.slug} href={`/tags/${tag.slug}`} className="tag">
-                #{tag.name}
-              </Link>
-            ))}
+            {article.tags?.length ? (
+              article.tags.map((tag) => (
+                <Link key={tag.slug} href={`/tags/${tag.slug}`} className="tag">
+                  #{tag.name}
+                </Link>
+              ))
+            ) : (
+              <span className="muted">Для цієї статті ще не додано тегів.</span>
+            )}
           </div>
         </section>
 
         <section className="related-block">
           <h2 className="section-title">Пов’язані статті</h2>
-          <div className="article-grid">
-            {relatedArticles.map((related) => (
-              <ArticleCard key={related.slug} article={related} />
-            ))}
-          </div>
+          {relatedArticles.length ? (
+            <div className="article-grid">
+              {relatedArticles.map((related) => (
+                <ArticleCard key={related.slug} article={related} />
+              ))}
+            </div>
+          ) : (
+            <p className="muted">Пов’язаних статей поки немає.</p>
+          )}
         </section>
       </article>
     </main>
