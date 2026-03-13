@@ -1,6 +1,8 @@
-import { authors, categories, getPublishedArticles, siteConfig, tags } from '../lib/mock-data';
+import { getSitemapData } from '../lib/api';
+import { siteConfig } from '../lib/site-config';
 
-export default function sitemap() {
+export default async function sitemap() {
+  const { categories, authors, tags, articles } = await getSitemapData();
   const baseUrl = siteConfig.baseUrl;
   const now = new Date();
 
@@ -21,9 +23,9 @@ export default function sitemap() {
       url: `${baseUrl}/tags/${tag.slug}`,
       lastModified: now
     })),
-    ...getPublishedArticles().map((article) => ({
+    ...articles.map((article) => ({
       url: `${baseUrl}/articles/${article.slug}`,
-      lastModified: new Date(article.publishedAt)
+      lastModified: new Date(article.updatedAt || article.publishedAt || now)
     }))
   ];
 }

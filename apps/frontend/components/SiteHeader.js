@@ -1,6 +1,10 @@
 import Link from 'next/link';
 
-export default function SiteHeader({ categories }) {
+function getNavLabel(category) {
+  return category.shortName || category.name;
+}
+
+export default function SiteHeader({ categories = [] }) {
   return (
     <header className="site-header">
       <div className="container header-inner">
@@ -15,10 +19,11 @@ export default function SiteHeader({ categories }) {
           <Link href="/">Головна</Link>
           {categories.map((category) => (
             <Link key={category.slug} href={`/categories/${category.slug}`}>
-              {category.shortName}
+              {getNavLabel(category)}
             </Link>
           ))}
           <Link href="/search">Пошук</Link>
+          <Link href="/rss.xml">RSS</Link>
           <Link href="/admin">Admin</Link>
         </nav>
       </div>

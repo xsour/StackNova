@@ -1,17 +1,20 @@
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
+
 import ArticleCard from '../../../components/ArticleCard';
 import Pagination from '../../../components/Pagination';
-import { authors, getArticlesByAuthor, getAuthorBySlug } from '../../../lib/mock-data';
+import { getAuthorPageData } from '../../../lib/api';
+import { authors } from '../../../lib/mock-data';
 
-export const revalidate = 3600;
+export const revalidate = 86400;
 
 export function generateStaticParams() {
   return authors.map((author) => ({ slug: author.slug }));
 }
 
-export function generateMetadata({ params }) {
-  const author = getAuthorBySlug(params.slug);
+export async function generateMetadata(props) {
+  const params = await props.params;
+  const { author } = await getAuthorPageData(params.slug, { page: 1 });
 
   if (!author) {
     return {
@@ -24,25 +27,35 @@ export function generateMetadata({ params }) {
     description: author.bio,
     alternates: {
       canonical: `/authors/${author.slug}`
+    },
+    openGraph: {
+      title: `${author.name} | IT Blog`,
+      description: author.bio,
+      url: `/authors/${author.slug}`
     }
   };
 }
 
-export default function AuthorPage({ params, searchParams }) {
-  const author = getAuthorBySlug(params.slug);
+export default async function AuthorPage(props) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
+  const page = Math.max(1, Number(searchParams?.page || 1) || 1);
+  const { author, items, meta } = await getAuthorPageData(params.slug, { page });
 
   if (!author) {
     notFound();
   }
 
-  const page = Math.max(1, Number(searchParams?.page || 1) || 1);
-  const { items, meta } = getArticlesByAuthor(author.slug, { page, perPage: 10 });
-
   return (
     <main className="container page">
       <section className="author-box">
         <div className="author-top">
-          <Image src={author.avatarUrl} alt={author.name} width={96} height={96} />
+          <Image
+            src={author.avatarUrl || '/author-avatar.svg'}
+            alt={author.name}
+            width={96}
+            height={96}
+          />
           <div>
             <p className="eyebrow">Автор</p>
             <h1>{author.name}</h1>
@@ -53,11 +66,17 @@ export default function AuthorPage({ params, searchParams }) {
 
       <section className="panel section-spacer">
         <h2>Матеріали автора</h2>
-        <div className="article-grid">
-          {items.map((article) => (
-            <ArticleCard key={article.slug} article={article} />
-          ))}
-        </div>
+        {items.length ? (
+          <div className="article-grid">
+            {items.map((article) => (
+              <ArticleCard key={article.slug} article={article} />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>У цього автора поки немає опублікованих статей.</p>
+          </div>
+        )}
         <Pagination basePath={`/authors/${author.slug}`} page={meta.page} totalPages={meta.totalPages} />
       </section>
     </main>

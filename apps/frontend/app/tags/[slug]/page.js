@@ -1,16 +1,19 @@
 import { notFound } from 'next/navigation';
+
 import ArticleCard from '../../../components/ArticleCard';
 import Pagination from '../../../components/Pagination';
-import { getArticlesByTag, getTagBySlug, tags } from '../../../lib/mock-data';
+import { getTagPageData } from '../../../lib/api';
+import { tags } from '../../../lib/mock-data';
 
-export const revalidate = 3600;
+export const revalidate = 300;
 
 export function generateStaticParams() {
   return tags.map((tag) => ({ slug: tag.slug }));
 }
 
-export function generateMetadata({ params }) {
-  const tag = getTagBySlug(params.slug);
+export async function generateMetadata(props) {
+  const params = await props.params;
+  const { tag } = await getTagPageData(params.slug, { page: 1 });
 
   if (!tag) {
     return {
@@ -27,15 +30,15 @@ export function generateMetadata({ params }) {
   };
 }
 
-export default function TagPage({ params, searchParams }) {
-  const tag = getTagBySlug(params.slug);
+export default async function TagPage(props) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
+  const page = Math.max(1, Number(searchParams?.page || 1) || 1);
+  const { tag, items, meta } = await getTagPageData(params.slug, { page });
 
   if (!tag) {
     notFound();
   }
-
-  const page = Math.max(1, Number(searchParams?.page || 1) || 1);
-  const { items, meta } = getArticlesByTag(tag.slug, { page, perPage: 10 });
 
   return (
     <main className="container page">
@@ -47,11 +50,17 @@ export default function TagPage({ params, searchParams }) {
 
       <section className="panel section-spacer">
         <h2>Матеріали за тегом</h2>
-        <div className="article-grid">
-          {items.map((article) => (
-            <ArticleCard key={article.slug} article={article} />
-          ))}
-        </div>
+        {items.length ? (
+          <div className="article-grid">
+            {items.map((article) => (
+              <ArticleCard key={article.slug} article={article} />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>За цим тегом поки немає опублікованих статей.</p>
+          </div>
+        )}
         <Pagination basePath={`/tags/${tag.slug}`} page={meta.page} totalPages={meta.totalPages} />
       </section>
     </main>
